@@ -1,0 +1,1215 @@
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import "../App.css";
+import DashboardView from "./DashboardView";
+import PasswordPrompt from "../components/PasswordPrompt";
+// import { API } from "../config/api.js";
+import Spinner from "../components/Spinner.jsx";
+import Scanner from "../components/Scanner.js";
+
+
+const API = "/api";
+
+
+const AdminDashboard = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("register-user");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Detect mobile
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Close sidebar on tab change (mobile only)
+  useEffect(() => {
+    if (isMobile) setSidebarOpen(false);
+  }, [activeTab, isMobile]);
+
+  const toggleSidebar = () => {
+    if (isMobile) setSidebarOpen((prev) => !prev);
+    else setSidebarCollapsed((prev) => !prev);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    navigate("/");
+  };
+
+  return (
+    <div className={`admin-dashboard${sidebarCollapsed ? " collapsed" : ""}`}>
+      {/* Hamburger for mobile */}
+      {isMobile && (
+        <button
+          className="collapse-toggle"
+          style={{ position: "fixed", left: 10, top: 10, zIndex: 1100 }}
+          onClick={() => setSidebarOpen((prev) => !prev)}
+        >
+          ☰
+        </button>
+      )}
+      {/* Sidebar and backdrop */}
+      {isMobile && sidebarOpen && (
+        <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
+      <aside
+        className={`sidebar${sidebarCollapsed ? " collapsed" : ""}${isMobile ? (sidebarOpen ? " open" : "") : ""}`}
+        style={{
+          ...(isMobile ? { position: "fixed" } : {}),
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Hide close button on mobile, use hamburger to toggle */}
+        {!isMobile && (
+          <button className="collapse-toggle" onClick={toggleSidebar}>
+            {sidebarCollapsed ? "➡️" : "⬅️"}
+          </button>
+        )}
+        {!sidebarCollapsed && <h3>🛠 Admin Panel</h3>}
+        <ul>
+          <li
+            onClick={() => setActiveTab("register-user")}
+            className={activeTab === "register-user" ? "active" : ""}
+          >
+            👤 {sidebarCollapsed && !isMobile ? "" : "Register User"}
+          </li>
+          <li
+            onClick={() => setActiveTab("register-device")}
+            className={activeTab === "register-device" ? "active" : ""}
+          >
+            📡 {sidebarCollapsed && !isMobile ? "" : "Register Device"}
+          </li>
+          <li className={activeTab === "color-scheme" ? "active" : ""}>
+            🎨 {sidebarCollapsed && !isMobile ? "" : "Alarm Colors"}
+          </li>
+          <li
+            onClick={() => setActiveTab("console")}
+            className={activeTab === "console" ? "active" : ""}
+          >
+            📊 {sidebarCollapsed && !isMobile ? "" : "Console"}
+          </li>
+          <li
+            onClick={() => setActiveTab("historical-data")}
+            className={activeTab === "historical-data" ? "active" : ""}
+          >
+            📈 {sidebarCollapsed && !isMobile ? "" : "Historical Data"}
+          </li>
+        </ul>
+
+        <ul style={{ marginTop: "auto" }}>
+          <li onClick={handleLogout}>🚪 {sidebarCollapsed && !isMobile ? "" : "Logout"}</li>
+        </ul>
+      </aside>
+
+      <main className="tab-content">
+        {activeTab === "register-user" && <RegisterUserTab />}
+        {activeTab === "register-device" && <RegisterDeviceTab />}
+        {activeTab === "color-scheme" && (
+          <p>🎨 Alarm color customization (coming soon)</p>
+        )}
+        {activeTab === "console" && <DashboardView />}
+        {activeTab === "historical-data" && <HistoricalDataTab />}
+      </main>
+    </div>
+  );
+};
+
+// ---------------- Register User Tab ----------------
+const RegisterUserTab = () => {
+  const [form, setForm] = useState({
+    username: "",
+    password: "",
+    role: "block",
+  });
+  const [status, setStatus] = useState("");
+  const [users, setUsers] = useState([]);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API}/users`);
+      const data = await res.json();
+      setUsers(data);
+    } catch (err) {
+      console.error("❌ Failed to fetch users:", err);
+    }
+  };
+
+  // REGISTER NEW USER
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setStatus("");
+    try {
+      const res = await fetch(
+        `${API}/register-user`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to register user");
+      setStatus("✅ User registered successfully");
+      setForm({ username: "", password: "", role: "block" });
+      fetchUsers();
+    } catch (err) {
+      setStatus("❌ " + err.message);
+    }
+  };
+
+  const requestPassword = (callback) => {
+    setPendingAction(() => callback);
+    setShowPrompt(true);
+  };
+
+  const handleEdit = (user, newUsername, newPassword) => {
+    requestPassword(async (adminPassword) => {
+      try {
+        const res = await fetch(
+          `${API}/user/${user._id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: newUsername,
+              password: newPassword,
+              adminPassword,
+            }),
+          }
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Update failed");
+        alert("✅ User updated");
+        fetchUsers();
+      } catch (err) {
+        alert("❌ " + err.message);
+      }
+    });
+  };
+
+  const handleDelete = (user) => {
+    if (user.role === "admin") {
+      alert("❌ Cannot delete an admin user");
+      return;
+    }
+    requestPassword(async (adminPassword) => {
+      try {
+        const res = await fetch(
+          `${API}/user/${user.username}`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ adminPassword }),
+          }
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Delete failed");
+        alert("✅ User deleted");
+        fetchUsers();
+      } catch (err) {
+        alert("❌ " + err.message);
+      }
+    });
+  };
+
+  return (
+    <div className="register-user-tab">
+      <h2>👤 Register New User</h2>
+      <form onSubmit={handleSubmit} className="admin-form">
+        <input
+          type="text"
+          placeholder="Username"
+          value={form.username}
+          maxLength={17}
+          title="Maximum 17 characters"
+          onChange={(e) => setForm({ ...form, username: e.target.value })}
+          required
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={form.password}
+          maxLength={25}
+          title="Min 8 chars: 1 uppercase, 1 lowercase, 1 number, 1 special char"
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          required
+        />
+        <select
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value })}
+        >
+          <option value="admin">Admin</option>
+          <option value="block">Block Officer</option>
+          <option value="gp">GP Officer</option>
+          <option value="user">Common User</option>
+        </select>
+        <button type="submit">Register</button>
+        {status && <p>{status}</p>}
+      </form>
+
+      <h3>📋 Registered Users</h3>
+      <div className="admin-table-scroll">
+        <table className="device-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Edit</th>
+              <th>Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.isArray(users) && users.length > 0 ? (
+              users.map((user) => (
+                <UserRow
+                  key={user._id}
+                  user={user}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))
+            ) : (
+              <tr>
+                <td colSpan="4">⚠️ No users available or failed to load.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showPrompt && (
+        <PasswordPrompt
+          onSubmit={(password) => {
+            pendingAction(password);
+            setShowPrompt(false);
+          }}
+          onCancel={() => setShowPrompt(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+// ------------- UserRow Component (updated inputs) ---------------
+const UserRow = ({ user, onEdit, onDelete }) => {
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState({
+    username: user.username,
+    password: "",
+  });
+
+  const handleSave = () => {
+    if (!formData.username || !formData.password) {
+      alert("⚠️ Username and Password are required.");
+      return;
+    }
+    // console.log("User Edit Form Data", formData);
+    // console.log("user", user)
+    onEdit(user, formData.username, formData.password);
+    setEditMode(false);
+  };
+
+  return (
+    <tr>
+      <td>
+        {editMode ? (
+          <input
+            value={formData.username}
+            maxLength={17}
+            title="Maximum 17 characters"
+            onChange={(e) =>
+              setFormData({ ...formData, username: e.target.value })
+            }
+          />
+        ) : (
+          user.username
+        )}
+      </td>
+      <td>{user.role}</td>
+      <td>
+        {editMode ? (
+          <>
+            <input
+              type="password"
+              placeholder="New password"
+              title="Min 8 chars: 1 uppercase, 1 lowercase, 1 number, 1 special char"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              style={{ marginRight: "5px" }}
+            />
+            <button onClick={handleSave}>💾 Save</button>
+          </>
+        ) : (
+          <button onClick={() => setEditMode(true)}>✏️ Edit</button>
+        )}
+      </td>
+      <td>
+        <button onClick={() => onDelete(user)} disabled={user.role === "admin"}>
+          ❌ Delete
+        </button>
+      </td>
+    </tr>
+  );
+};
+
+// ---------------- Register Device Tab ----------------
+const RegisterDeviceTab = () => {
+  const [form, setForm] = useState({
+    ip: "",
+    locationId: "",
+    address: "",
+    latitude: "",
+    longitude: "",
+    ipCameraMake: "",
+    ipCameraIp: "",
+  });
+  const [status, setStatus] = useState("");
+  const [deviceList, setDeviceList] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+
+  // eslint-disable-next-line
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    fetchDevices(true);
+    const interval = setInterval(() => {
+      fetchDevices(false);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchDevices = async (showLoader = false) => {
+    try {
+      if (showLoader) setLoadingDevices(true);
+
+      const res = await fetch(
+        `${API}/devices-info`
+      );
+      const data = await res.json();
+      setDeviceList(data);
+    } catch (err) {
+      console.error("Failed to fetch devices:", err);
+    } finally {
+      if (showLoader) {
+        setLoadingDevices(false);
+        setIsInitialLoad(false);
+      }
+    };
+  }
+
+  // REGISTER NEW DEVICE
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setStatus("");
+
+    const ipRegex = /^192\.168\.(\d{1})\.(\d{1,3})$/;
+    const cleanedIP = form.ip.trim();
+    if (!ipRegex.test(cleanedIP)) {
+      setStatus("❌ Invalid IP address format. Use XXX:XXX:X:X");
+      return;
+    }
+    // Check if IP already exists
+    const ipExists = deviceList.some(
+      (device) => device.ip.toLowerCase() === cleanedIP.toLowerCase()
+    );
+    if (ipExists) {
+      setStatus("❌ This IP address already exists.");
+      return;
+    }
+
+    if (!form.locationId) {
+      setStatus("⚠️Provide Location ID");
+      return;
+    }
+    if (!form.address) {
+      setStatus("⚠️Provide Address");
+      return;
+    }
+    const lat = parseFloat(form.latitude);
+    if (isNaN(lat) || lat < -90 || lat > 90) {
+      setStatus("⚠️ Latitude must be between -90 and 90");
+      return;
+    }
+    const lng = parseFloat(form.longitude);
+    if (isNaN(lng) || lng < -180 || lng > 180) {
+      setStatus("⚠️ Longitude must be between -180 and 180");
+      return;
+    }
+    if (!form.ipCameraMake || !form.ipCameraIp) {
+      setStatus("⚠️Provide Camera Make & Camera IP");
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${API}/register-device`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ip: cleanedIP,
+            locationId: form.locationId,
+            address: form.address,
+            latitude: +form.latitude,
+            longitude: +form.longitude,
+            ipCamera: {
+              type: form.ipCameraMake,
+              ip: form.ipCameraIp,
+            },
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Device registration failed");
+      setStatus("✅ Device registered");
+      setForm({
+        ip: "",
+        locationId: "",
+        address: "",
+        latitude: "",
+        longitude: "",
+        ipCameraMake: "",
+        ipCameraIp: "",
+      });
+      fetchDevices();
+    } catch (err) {
+      setStatus(`❌ ${err.message}`);
+    }
+  };
+
+  const handleIPChange = (e) => {
+    const { value: rawValue } = e.target;
+    let value = rawValue;
+
+    // allow only digits and dots
+    value = value.replace(/[^0-9.]/g, "");
+
+    const parts = value.split(".");
+
+    // max 4 octets
+    if (parts.length > 4) return;
+
+    // each octet max 255 and max 3 digits
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].length > 3) return;
+      if (Number(parts[i]) > 255) return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      ip: value
+    }))
+  };
+
+  // Update deviceList instantly with backend response
+  const handleDeviceUpdated = (updatedDevice) => {
+    setDeviceList((prevDevices) =>
+      prevDevices.map((dev) =>
+        dev.ip === updatedDevice.ip ? { ...updatedDevice } : dev
+      )
+    );
+  };
+
+  const filteredDevices = deviceList.filter((device) => {
+    const term = searchTerm.toLowerCase();
+
+    return (
+      device.ip?.toLowerCase().includes(term) ||
+      device.locationId?.toLowerCase().includes(term) ||
+      device.address?.toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <div className="register-device-tab">
+      <div className="device-header">
+        <h2>📡 Register New Device</h2>
+
+        <button
+          className="toggle-form-btn"
+          onClick={() => setShowForm(prev => !prev)}
+        >
+          {showForm ? "➖ Hide Form" : "➕ Add New Device"}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleRegister} className="device-form-grid">
+          <input
+            className="full-width"
+            type="text"
+            placeholder="IP Address"
+            value={form.ip}
+            maxLength={17}
+            pattern="^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$"
+            inputMode="decimal"
+            title="Format: 192.168.0.XXX (numbers only)"
+            onChange={handleIPChange}
+            required
+          />
+          <div className="location-id-row">
+            <input
+              className="location-id-input"
+              type="text"
+              placeholder="Location ID"
+              value={form.locationId}
+              maxLength={17}
+              onChange={(e) => setForm({ ...form, locationId: e.target.value })}
+              required
+            />
+
+            <button
+              className="scanner-btn"
+              type="button"
+              onClick={() => setShowScanner(true)}
+            >
+              📷
+            </button>
+          </div>
+
+          <input
+            type="text"
+            placeholder="Address"
+            value={form.address}
+            onChange={(e) => setForm({ ...form, address: e.target.value })}
+            required
+          />
+          <input
+            type="number"
+            step="0.000001"
+            pattern="^-?\d{1,2}\.\d{1,6}$"
+            title="Latitude must be a number with up to 6 decimals"
+            placeholder="Latitude"
+            value={form.latitude}
+            onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+            required
+          />
+          <input
+            type="number"
+            step="0.000001"
+            pattern="^-?\d{1,3}\.\d{1,6}$"
+            title="Longitude must be a number with up to 6 decimals"
+            placeholder="Longitude"
+            value={form.longitude}
+            onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Camera Make"
+            value={form.ipCameraMake}
+            onChange={(e) =>
+              setForm({ ...form, ipCameraMake: e.target.value })
+            }
+            required
+          />
+          <input
+            type="text"
+            placeholder="Camera IP"
+            value={form.ipCameraIp}
+            inputMode="decimal"
+            pattern="^[0-9.]*$"
+            title="Enter valid IP address"
+            onChange={(e) => {
+              const sanitized = e.target.value.replace(/[^0-9.]/g, "");
+              setForm({ ...form, ipCameraIp: sanitized });
+            }}
+            required
+          />
+          <button type="submit">Register Device</button>
+          {status && <p>{status}</p>}
+        </form>)}
+
+      {showScanner && (
+        <Scanner
+          onScan={(value) => {
+            setForm(prev => ({ ...prev, locationId: value }));
+            setShowScanner(false);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      <h3>📋 Registered Devices</h3>
+      {/* Search Bar */}
+      <div className="device-search-row">
+        <input
+          type="text"
+          className="device-search-input"
+          placeholder="🔍 Search by IP, Location ID or Address..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          pattern="^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$"
+        />
+        {searchTerm && (
+          <button className="device-search-clear-btn" onClick={() => setSearchTerm("")}>
+            ❌ Clear
+          </button>
+        )}
+      </div>
+      <div className="admin-table-scroll">
+        <table className="device-table">
+          <thead>
+            <tr>
+              <th>IP</th>
+              <th>Location ID</th>
+              <th>Address</th>
+              <th>Latitude</th>
+              <th>Longitude</th>
+              <th>Camera</th>
+              <th>Action</th>
+              <th>Edit</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loadingDevices ? (
+              <tr>
+                <td colSpan="8" style={{ textAlign: "center", padding: "30px" }}>
+                  <Spinner />
+                </td>
+              </tr>
+            ) : Array.isArray(deviceList) && deviceList.length > 0 ? (
+              filteredDevices.map((device) => (
+                <EditableRow
+                  key={device.ip}
+                  device={device}
+                  onUpdated={handleDeviceUpdated}
+                />
+              ))
+            ) : (
+              <tr>
+                <td colSpan="8">⚠️ No devices available or failed to load.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// Editable device row with update using backend response
+const EditableRow = ({ device, onUpdated }) => {
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState({ ...device });
+
+  useEffect(() => {
+    if (editMode) {
+      setFormData({ ...device });
+    }
+    // eslint-disable-next-line 
+  }, [editMode]);
+
+  const askAdminPassword = async () => {
+    const password = prompt("Enter admin password:");
+    if (!password) {
+      alert("⚠️ Action cancelled: No password entered.");
+      return null;
+    }
+    return password;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const saveEdit = async () => {
+    const password = await askAdminPassword();
+    if (!password) return;
+
+    try {
+      const res = await fetch(
+        `${API}/device/${device.ip}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...formData, password }),
+        }
+      );
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || "Failed to update device");
+      }
+
+      const updatedDevice = await res.json();
+      setEditMode(false);
+      onUpdated(updatedDevice);
+    } catch (err) {
+      alert("Error updating device: " + err.message);
+    }
+  };
+
+  const handleDelete = async () => {
+    const password = await askAdminPassword();
+    if (!password) return;
+
+    try {
+      const res = await fetch(
+        `${API}/device/delete/${device.ip}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      alert("✅ Device deleted successfully");
+    } catch (err) {
+      alert("❌ Error deleting device: " + err.message);
+    }
+  };
+
+  return (
+    <tr>
+      <td>{device.ip}</td>
+      <td>
+        {editMode ? (
+          <input
+            type="text"
+            name="locationId"
+            maxLength={17}
+            title="Maximum 17 characters"
+            value={formData.locationId}
+            onChange={handleChange}
+          />
+        ) : (
+          device.locationId
+        )}
+      </td>
+      <td>
+        {editMode ? (
+          <input
+            type="text"
+            name="address"
+            value={formData.address}
+            onChange={handleChange}
+          />
+        ) : (
+          device.address
+        )}
+      </td>
+      <td>
+        {editMode ? (
+          <input
+            type="number"
+            name="latitude"
+            step="0.000001"
+            pattern="^-?\d{1,2}\.\d{1,6}$"
+            title="Latitude must be a number with up to 6 decimals"
+            value={formData.latitude}
+            onChange={handleChange}
+          />
+        ) : (
+          device.latitude
+        )}
+      </td>
+      <td>
+        {editMode ? (
+          <input
+            type="number"
+            name="longitude"
+            step="0.000001"
+            pattern="^-?\d{1,3}\.\d{1,6}$"
+            title="Longitude must be a number with up to 6 decimals"
+            value={formData.longitude}
+            onChange={handleChange}
+          />
+        ) : (
+          device.longitude
+        )}
+      </td>
+      <td>
+        {editMode ? (
+          <>
+            <input
+              type="text"
+              name="ipCameraMake"
+              placeholder="Camera Make"
+              value={formData.ipCamera?.type || ""}
+              onChange={(e) =>
+                setFormData(prev => ({
+                  ...prev,
+                  ipCamera: {
+                    ...prev.ipCamera,
+                    type: e.target.value
+                  }
+                }))
+              }
+            />
+            <input
+              type="text"
+              placeholder="Camera IP"
+              value={formData.ipCamera?.ip || ""}
+              inputMode="decimal"
+              pattern="^[0-9.]*$"
+              onChange={(e) => {
+                const sanitized = e.target.value.replace(/[^0-9.]/g, "");
+                setFormData(prev => ({
+                  ...prev,
+                  ipCamera: {
+                    ...prev.ipCamera,
+                    ip: sanitized
+                  }
+                }));
+              }}
+            />
+          </>
+        ) : device.ipCamera?.ip ? (
+          <a
+            href={`https://${device.ipCamera.ip}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            📷 View
+          </a>
+        ) : (
+          "-"
+        )}
+      </td>
+      <td>
+        <button onClick={handleDelete}>❌ Delete</button>
+      </td>
+      <td>
+        {editMode ? (
+          <button onClick={saveEdit}>💾 Save</button>
+        ) : (
+          <button onClick={() => setEditMode(true)}>✏️ Edit</button>
+        )}
+      </td>
+    </tr>
+  );
+};
+
+// ---------------- Historical Data Tab ----------------
+const HistoricalDataTab = () => {
+  const [devices, setDevices] = useState([]);
+  const [selectedIP, setSelectedIP] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [toTime, setToTime] = useState("");
+  const [alarmEntries, setAlarmEntries] = useState([]);
+
+  const [query, setQuery] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const filteredDevices = devices.filter(dev =>
+    dev.ip.toLowerCase().includes(query.toLowerCase())
+  );
+
+  // eslint-disable-next-line
+  const [specificReading, setSpecificReading] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/devices-info`)
+      .then((res) => res.json())
+      .then(setDevices)
+      .catch((err) => console.error("Error fetching devices:", err));
+  }, []);
+
+  // eslint-disable-next-line
+  function downsampleHourly(readings) {
+    const seenHours = new Set();
+    return readings.filter((reading) => {
+      const date = new Date(reading.timestamp);
+      const hourKey = date.toISOString().slice(0, 13); // "YYYY-MM-DDTHH"
+      if (!seenHours.has(hourKey)) {
+        seenHours.add(hourKey);
+        return true;
+      }
+      return false;
+    });
+  }
+
+  const fetchHistoricalData = async () => {
+    if (!date || !time || !toTime || !selectedIP) {
+      alert("Please select device, date, from time and to time.");
+      return;
+    }
+
+    const fromDateTime = `${date}T${time.length === 5 ? time + ":00" : time}`;
+    const toDateTime = `${date}T${toTime.length === 5 ? toTime + ":00" : toTime}`;
+
+    console.log("Date & time: ", fromDateTime, toDateTime);
+
+    const fromObj = new Date(fromDateTime);
+    const toObj = new Date(toDateTime);
+    const now = new Date();
+
+    if (isNaN(fromObj.getTime()) || isNaN(toObj.getTime())) {
+      alert("❌ Invalid date/time format");
+      return;
+    }
+
+    if (fromObj > now || toObj > now) {
+      alert("⚠️ You cannot select a future date/time.");
+      return;
+    }
+
+    if (toObj.getTime() < fromObj.getTime()) {
+      alert("⚠️ 'To' time must be after 'From' time.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const formatLocalNoTz = (d) => {
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      };
+
+      const fromStr = formatLocalNoTz(fromObj);
+      const toStr = formatLocalNoTz(toObj);
+
+      // console.log("Alarm-history:", selectedIP, fromStr, "->", toStr);
+      const res = await fetch(
+        `${API}/alarm-history?ip=${encodeURIComponent(selectedIP)}&from=${encodeURIComponent(fromDateTime)}&to=${encodeURIComponent(toDateTime)}`
+      );
+      const data = await res.json();
+
+      // console.log("Data: ", data);
+      if (!res.ok)
+        throw new Error(data.error || "Failed to fetch historical data");
+
+      // const hourlyReadings = downsampleHourly(data.alarms);
+      setAlarmEntries(Array.isArray(data.entries) ? data.entries : []);
+      // setSpecificReading(data.atSelectedTime);
+      // console.log("specific: ", specificReading)
+    } catch (err) {
+      alert(`❌ ${err?.stack}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="historical-data-tab">
+
+      <div className="p-6 bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl">
+
+        <div className="p-6 border shadow-xl border-black-200 bg-whitblacke/95 backdrop-blur-md rounded-2xl">
+
+          <h2 className="flex items-center gap-2 mb-5 text-xl font-semibold text-white-800">
+            📊 <span className="tracking-wide">Historical Alarm Viewer</span>
+          </h2>
+
+          <div className="flex flex-wrap items-end gap-4">
+
+            {/* Device */}
+            <div className="relative w-[220px]">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setShowDropdown(true);
+                }}
+                onFocus={() => setShowDropdown(true)}
+                placeholder="Search Device..."
+                className="w-full px-3 py-2 text-black border rounded-lg bord-ber-gray-300 text focus:ring-2 focus:ring-blue-500"
+              />
+
+              {showDropdown && (
+                <div className="absolute z-50 w-full mt-1 overflow-y-auto text-black bg-white border border-gray-200 rounded-lg shadow-md max-h-60">
+                  {filteredDevices.length > 0 ? (
+                    filteredDevices.map((dev) => (
+                      <div
+                        key={dev.ip}
+                        onClick={() => {
+                          setQuery(dev.ip);
+                          setSelectedIP(dev.ip);
+                          setShowDropdown(false);
+                        }}
+                        className="px-3 py-2 cursor-pointer hover:bg-blue-100"
+                      >
+                        {dev.ip}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-gray-500">No results</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Date */}
+            <div className="flex flex-col">
+              <label className="mb-1 text-sm text-white-600">Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="px-3 py-2 text-black border rounded-lg border-black-300 bg-black-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Time */}
+            <div className="flex flex-col">
+              <label className="mb-1 text-sm text-white-600">From</label>
+              <input
+                type="time"
+                step="1"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="px-3 py-2 text-black border rounded-lg border-black-300 bg-black-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* To Time */}
+            <div className="flex flex-col">
+              <label className="mb-1 text-sm text-white-600">To</label>
+              <input
+                type="time"
+                step="1"
+                value={toTime}
+                onChange={(e) => setToTime(e.target.value)}
+                className="px-3 py-2 text-black border rounded-lg border-black-300 bg-black-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
+
+
+            {/* Button */}
+            <button
+              onClick={fetchHistoricalData}
+              disabled={loading}
+              className={`px-6 py-2 rounded-lg text-black font-medium flex items-center gap-2 transition-all duration-200 shadow-md
+          ${loading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 active:scale-95"
+                }`}
+            >
+              🔍 {loading ? "Fetching..." : "Fetch"}
+            </button>
+
+          </div>
+        </div>
+      </div>
+
+
+      {loading ? (
+        <div className="loader">⏳ Loading data...</div>
+      ) : (
+        <>
+          <div className="mt-4">
+            <h3 className="flex items-center gap-2 mb-3 text-lg font-semibold text-white">
+              🧾 Alarm File
+            </h3>
+
+            {alarmEntries.length === 0 ? (
+              <p className="text-gray-400">No records found</p>
+            ) : (
+              <div className="overflow-x-auto bg-gray-900 border border-gray-700 shadow-lg rounded-xl">
+
+                <table className="min-w-full text-sm text-left text-gray-300">
+
+                  {/* Header */}
+                  <thead className="text-xs text-gray-200 uppercase bg-gray-800">
+                    <tr>
+                      <th className="px-4 py-3">Time</th>
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Value</th>
+                    </tr>
+                  </thead>
+
+                  {/* Body */}
+                  <tbody className="divide-y divide-gray-700">
+                    {alarmEntries.map((row, idx) => (
+                      <tr
+                        key={idx}
+                        className="transition duration-150 hover:bg-gray-800"
+                      >
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          {new Date(row.timestamp).toLocaleString("en-IN")}
+                        </td>
+
+                        <td className="px-4 py-2 font-medium text-blue-400">
+                          {row.name}
+                        </td>
+
+                        <td className="px-4 py-2 font-semibold text-white">
+                          {row.value}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+
+                </table>
+              </div>
+            )}
+          </div>
+
+          {specificReading && (
+            <div className="gauge-status-block">
+              <h3>📍 Snapshot at Selected Time</h3>
+              <div className="snapshot-table">
+                <div className="snapshot-cell">
+                  🌡 Inside Temp: {specificReading.insideTemperature}°C
+                </div>
+                <div className="snapshot-cell">
+                  💧 Humidity: {specificReading.humidity}%
+                </div>
+                <div className="snapshot-cell">
+                  🌡 Outside Temp: {specificReading.outsideTemperature}°C
+                </div>
+                <div className="snapshot-cell">
+                  🔋 Input Voltage: {specificReading.inputVoltage}V
+                </div>
+                <div className="snapshot-cell">
+                  🔌 Output Voltage: {specificReading.outputVoltage}V
+                </div>
+                <div className="snapshot-cell">
+                  🔋 Battery Backup: {specificReading.batteryBackup} mins
+                </div>
+                <div className="snapshot-cell">
+                  🔥 Fire Alarm:{" "}
+                  {specificReading.fireAlarm ? "Active" : "Normal"}
+                </div>
+                <div className="snapshot-cell">
+                  🚪 Lock: {specificReading.lockStatus}
+                </div>
+                <div className="snapshot-cell">
+                  🚪 Door: {specificReading.doorStatus}
+                </div>
+                <div className="snapshot-cell">
+                  ⚙️ Fan Level:{" "}
+                  {specificReading.fanLevel1Running
+                    ? 1
+                    : specificReading.fanLevel2Running
+                      ? 2
+                      : specificReading.fanLevel3Running
+                        ? 3
+                        : "Off"}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default AdminDashboard;

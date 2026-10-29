@@ -1,0 +1,25 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "/var/www/ems/technoEMS/server/logger/logs/application/.ea69e1793e23863fe359e42656eac3fa404537d0-audit.json",
+    "files": [
+        {
+            "date": 1793013567975,
+            "name": "/var/www/ems/technoEMS/server/logger/logs/application/2026-10-26.log",
+            "hash": "09a8e0c119f88120b54d0fd680b4f8e21a61c0798b56d88a897d5eb5f2aa0a4f"
+        },
+        {
+            "date": 1793099588561,
+            "name": "/var/www/ems/technoEMS/server/logger/logs/application/2026-10-27.log",
+            "hash": "acdfc2fd12bbe9b3f85be94714083266b58a98f4527b821151712de1f1954905"
+        },
+        {
+            "date": 1793162898835,
+            "name": "/var/www/ems/technoEMS/server/logger/logs/application/2026-10-28.log",
+            "hash": "bec1c0a3c1f75a0ae9e5df208f6f97477179978a0e354a7154b7d54e09eb1e25"
+        }
+    ],
+    "hashType": "sha256"
+}
