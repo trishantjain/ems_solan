@@ -189,7 +189,9 @@ async function loadDeviceCache() {
   try {
     const devices = await Device.find({}, { ip: 1, ipCamera: 1 }).lean();
 
-    devices.forEach((d) => {
+    deviceCache.clear();
+    devices.forEach(d => {
+      if (!d.ip) return;
       deviceCache.set(d.ip, {
         cameraType: d.ipCamera?.type || null,
         cameraIP: d.ipCamera?.ip || null,
@@ -2252,8 +2254,11 @@ const server = net.createServer((socket) => {
           .join(".");
 
         // Reject obvious garbage IPs
-        if (!ip.startsWith("192.168.")) {
-          console.warn("🚫 Dropping invalid IP:", ip);
+        // if (!ip.startsWith('192.168.')) {
+        //   console.warn('🚫 Dropping invalid IP:', ip);
+        if (!deviceCache.has(ip)) {
+          console.warn(`🚫 Dropping packet: Unknown device IP ${ip}`);
+          // Resync buffer because this may be garbage/misaligned data
           socket.buffer = socket.buffer.slice(1);
           continue;
         }
