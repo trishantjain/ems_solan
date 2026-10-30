@@ -1033,7 +1033,6 @@ app.post("/command", (req, res) => {
       return res.status(404).json({ message: `Device ${ip} not connected` });
     }
 
-    console.log("Sending command: ");
 
     const buffer = Buffer.from(command, "utf-8");
     deviceSocket.write(buffer, (err) => {
@@ -2143,7 +2142,7 @@ const server = net.createServer((socket) => {
         if (!socket.preambleHandled && socket.buffer.length >= 4) {
           const preamble = socket.buffer.slice(0, 4).toString("ascii");
 
-          if (preamble === 'tcp2') {
+          if (preamble === "tcp2") {
             socket.buffer = socket.buffer.slice(4);
             socket.preambleHandled = true;
           }
@@ -2219,7 +2218,7 @@ const server = net.createServer((socket) => {
               type: "dump",
               ip: socket.remoteAddress,
               packet: dumpMessage,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
             });
 
             console.log("📤 Dump packet sent to log.queue");
@@ -2236,7 +2235,7 @@ const server = net.createServer((socket) => {
           break;
         }
 
-        const header = socket.buffer.slice(0, 8).toString('ascii');
+        const header = socket.buffer.slice(0, 8).toString("ascii");
 
         if (!/^[0-9a-fA-F]{8}$/.test(header)) {
           // corrupted / misaligned packet → resync
@@ -2244,7 +2243,7 @@ const server = net.createServer((socket) => {
           continue;
         }
 
-        const ipHexAscii = socket.buffer.slice(0, 8).toString('ascii');
+        const ipHexAscii = socket.buffer.slice(0, 8).toString("ascii");
 
         // Convert hex pairs → decimal
         const ip = ipHexAscii
@@ -2583,7 +2582,7 @@ const server = net.createServer((socket) => {
             await SensorReading.insertMany(toSave);
 
             // Update deviceStatus only after successful save
-            const uniqueMacs = [...new Set(toSave.map(r => r.ip))];
+            const uniqueMacs = [...new Set(toSave.map((r) => r.ip))];
 
             await Promise.all(uniqueMacs.map((ip) => updateDeviceStatus(ip)));
           } catch (err) {
